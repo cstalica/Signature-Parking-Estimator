@@ -79,7 +79,7 @@ def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, de
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Origin": "https://www.signatureaviation.com",
-        "Referer": "url?id=4",
+        "Referer": "https://www.signatureaviation.com/simplified-parking",
     }
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
@@ -178,98 +178,4 @@ if submitted:
                 data = res["data"]
                 threshold_gal = parse_threshold_gallons(data)
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
-                est_total = data.get("estimatedTotal", 0)
-                
-                # Fetch threshold quote to obtain the discounted rate & discount value
-                est_total_at_threshold_str = "N/A"
-                discount_amount_val = 0.0
-                
-                if threshold_gal is not None:
-                    if fuel_gal >= threshold_gal:
-                        est_total_at_threshold_str = f"${est_total:,.2f}"
-                        discount_amount_val = extract_discount_amount(data)
-                    else:
-                        status.write(f"   ↳ Requesting threshold quote ({threshold_gal} gal) for **{tail}**...")
-                        thresh_res = fetch_quote(
-                            tail_num=tail,
-                            customer_name=customer_name,
-                            aircraft_model=aircraft_make_model,
-                            fbo_id=fbo_base_id,
-                            arrival_str=arrival_str,
-                            departure_str=departure_str,
-                            fuel=threshold_gal
-                        )
-                        if thresh_res["success"]:
-                            thresh_data = thresh_res["data"]
-                            thresh_total = thresh_data.get("estimatedTotal", 0)
-                            est_total_at_threshold_str = f"${thresh_total:,.2f}"
-                            
-                            # Extract discount from the threshold response or calculate savings
-                            discount_amount_val = extract_discount_amount(thresh_data)
-                            if discount_amount_val == 0.0:
-                                discount_amount_val = max(0.0, est_total - thresh_total)
-
-                status.write(f"✅ **{tail}** — Quote retrieved successfully!")
-                
-                results_summary.append({
-                    "Status": "🟢 Success",
-                    "Tail Number": tail,
-                    "Fuel Waive Threshold": threshold_display,
-                    "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Current Estimated Total": f"${est_total:,.2f}",
-                    "Discount Amount": f"-${discount_amount_val:,.2f}" if discount_amount_val > 0 else "$0.00",
-                    "Est. Total if Threshold Met": est_total_at_threshold_str,
-                    "raw": data,
-                    "is_error": False
-                })
-            else:
-                status.write(f"❌ **{tail}** — Request failed: {res.get('error')}")
-                results_summary.append({
-                    "Status": "🔴 Failed",
-                    "Tail Number": tail,
-                    "Fuel Waive Threshold": "N/A",
-                    "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Current Estimated Total": "N/A",
-                    "Discount Amount": "N/A",
-                    "Est. Total if Threshold Met": "N/A",
-                    "raw": res.get("raw") or res.get("error"),
-                    "is_error": True,
-                    "error_msg": res.get("error")
-                })
-
-        status.update(label="Data retrieval complete!", state="complete", expanded=False)
-
-    # Render results
-    if results_summary:
-        st.subheader("Summary Table")
-        df = pd.DataFrame(results_summary)[
-            [
-                "Status",
-                "Tail Number",
-                "Fuel Waive Threshold",
-                "Fuel Purchased (gal)",
-                "Current Estimated Total",
-                "Discount Amount",
-                "Est. Total if Threshold Met"
-            ]
-        ]
-        st.table(df)
-
-        st.subheader("Detailed Breakdown")
-        for item in results_summary:
-            status_text = "ERROR" if item["is_error"] else "SUCCESS"
-            expander_title = f"{item['Tail Number']} — [{status_text}]"
-            
-            with st.expander(expander_title, expanded=(len(results_summary) == 1)):
-                if item["is_error"]:
-                    st.error(f"Data Retrieval Failed: {item.get('error_msg')}")
-                else:
-                    c1, c2, c3, c4, c5 = st.columns(5)
-                    c1.metric("Waive Threshold", item["Fuel Waive Threshold"])
-                    c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
-                    c3.metric("Current Total", item["Current Estimated Total"])
-                    c4.metric("Discount Amount", item["Discount Amount"])
-                    c5.metric("Total at Threshold", item["Est. Total if Threshold Met"])
-                
-                st.write("**Raw Payload/Response:**")
-                st.json(item["raw"])
+                est_total = data.get("
