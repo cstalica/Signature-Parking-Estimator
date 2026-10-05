@@ -1,11 +1,11 @@
-import re
 from datetime import datetime, timedelta
+import re
 import pandas as pd
 import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="Aircraft Parking Fee Estimator", page_icon="✈️️", layout="centered"
+    page_title="Aircraft Parking Fee Estimator", page_icon="✈️", layout="wide"
 )
 
 st.title("✈️ Aircraft Parking Fee Estimator")
@@ -102,36 +102,22 @@ def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, de
         return {"success": False, "error": str(e), "raw": None}
 
 
-def extract_waive_label(data):
-    """Extracts the fuel threshold value directly from fuelDescription or waivedFuelGallons."""
+def parse_threshold_gallons(data):
+    """Extracts numeric threshold gallon value from response."""
     if not data:
-        return "N/A"
+        return None
         
-    # 1. Direct check for fuelDescription key
     fuel_desc = data.get("fuelDescription", "")
     if fuel_desc:
         match = re.search(r"(\d+)\s*gal", fuel_desc)
         if match:
-            return f"{int(match.group(1)):,} gal"
-        return fuel_desc
+            return int(match.group(1))
 
-    # 2. Search in list items / discounts
-    discounts = data.get("discounts", []) or data.get("lineItems", [])
-    for item in discounts:
-        if isinstance(item, dict):
-            lbl = item.get("label", "") or item.get("fuelDescription", "")
-            if "Fuel uplift threshold" in lbl or "waive parking" in lbl:
-                match = re.search(r"(\d+)\s*gal", lbl)
-                if match:
-                    return f"{int(match.group(1)):,} gal"
-                return lbl
-
-    # 3. Fallback to waivedFuelGallons integer key
     waived_gal = data.get("waivedFuelGallons")
     if waived_gal is not None:
-        return f"{waived_gal:,} gal"
+        return int(waived_gal)
 
-    return "N/A"
+    return None
 
 
 if submitted:
@@ -141,13 +127,12 @@ if submitted:
     arrival_str = now.strftime("%Y-%m-%d")
     departure_str = dept.strftime("%Y-%m-%d")
 
-    # Determine list of tail numbers to query
     target_tails = TAIL_NUMBERS if selected_tail == "All Tail Numbers" else [selected_tail]
-
     results_summary = []
     
     with st.spinner("Fetching estimate(s) from API..."):
         for tail in target_tails:
+            # 1. Fetch initial quote based on user input
             res = fetch_quote(
                 tail_num=tail,
                 customer_name=customer_name,
@@ -160,18 +145,40 @@ if submitted:
 
             if res["success"]:
                 data = res["data"]
-                waive_threshold = extract_waive_label(data)
-                fuel_min = data.get("waivedFuelGallons", 0)
+                threshold_gal = parse_threshold_gallons(data)
+                
+                threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
+                est_total = data.get("estimatedTotal", 0)
+                
+                # 2. Fetch quote for the threshold amount to find the waived total
+                est_total_at_threshold_str = "N/A"
+                if threshold_gal is not None:
+                    if fuel_gal >= threshold_gal:
+                        # Already meeting threshold
+                        est_total_at_threshold_str = f"${est_total:,.2f}"
+                    else:
+                        thresh_res = fetch_quote(
+                            tail_num=tail,
+                            customer_name=customer_name,
+                            aircraft_model=aircraft_make_model,
+                            fbo_id=fbo_base_id,
+                            arrival_str=arrival_str,
+                            departure_str=departure_str,
+                            fuel=threshold_gal
+                        )
+                        if thresh_res["success"]:
+                            thresh_total = thresh_res["data"].get("estimatedTotal", 0)
+                            est_total_at_threshold_str = f"${thresh_total:,.2f}"
                 
                 results_summary.append({
                     "Status": "🟢 Success",
                     "Tail Number": tail,
-                    "Fuel Waive Threshold": waive_threshold,
-                    "Fuel Minimum (gal)": f"{fuel_min:,} gal",
+                    "Fuel Waive Threshold": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Initial Rate": f"${data.get('initialRate', 0):,.2f}",
                     "Total Tax": f"${data.get('tax', 0):,.2f}",
-                    "Estimated Total": f"${data.get('estimatedTotal', 0):,.2f}",
+                    "Current Estimated Total": f"${est_total:,.2f}",
+                    "Est. Total if Threshold Met": est_total_at_threshold_str,
                     "raw": data,
                     "is_error": False
                 })
@@ -180,11 +187,11 @@ if submitted:
                     "Status": "🔴 Failed",
                     "Tail Number": tail,
                     "Fuel Waive Threshold": "N/A",
-                    "Fuel Minimum (gal)": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Initial Rate": "N/A",
                     "Total Tax": "N/A",
-                    "Estimated Total": "N/A",
+                    "Current Estimated Total": "N/A",
+                    "Est. Total if Threshold Met": "N/A",
                     "raw": res.get("raw") or res.get("error"),
                     "is_error": True,
                     "error_msg": res.get("error")
@@ -201,7 +208,8 @@ if submitted:
                 "Fuel Purchased (gal)",
                 "Initial Rate",
                 "Total Tax",
-                "Estimated Total"
+                "Current Estimated Total",
+                "Est. Total if Threshold Met"
             ]
         ]
         st.table(df)
@@ -215,13 +223,12 @@ if submitted:
                 if item["is_error"]:
                     st.error(f"Data Retrieval Failed: {item.get('error_msg')}")
                 else:
-                    st.info(f"**Fuel Waive Threshold:** {item['Fuel Waive Threshold']}")
-                    
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Fuel Waive Threshold", item["Fuel Waive Threshold"])
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric("Waive Threshold", item["Fuel Waive Threshold"])
                     c2.metric("Initial Rate", item["Initial Rate"])
                     c3.metric("Total Tax", item["Total Tax"])
-                    c4.metric("Estimated Total", item["Estimated Total"])
+                    c4.metric("Current Total", item["Current Estimated Total"])
+                    c5.metric("Total at Threshold", item["Est. Total if Threshold Met"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
