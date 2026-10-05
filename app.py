@@ -47,12 +47,7 @@ with st.form("parking_estimator_form"):
         "Duration of Stay (Days)", min_value=1, max_value=30, value=1, step=1
     )
     
-    # Fuel Minimum input above Fuel Purchased
-    fuel_min = st.number_input(
-        "Fuel Minimum (Gallons)", min_value=0, value=0, step=10,
-        help="Minimum required fuel uplift to qualify for waived fees or discounts"
-    )
-    
+    # Fuel Purchased Input
     fuel_gal = st.number_input(
         "Fuel Purchased (Gallons)", min_value=0, value=0, step=10
     )
@@ -100,6 +95,23 @@ def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, de
         return {"error": f"HTTP {response.status_code}: {response.text}"}
 
 
+def extract_waive_label(data):
+    """Recursively search for threshold label or construct it from waivedFuelGallons."""
+    # 1. Search in discounts/breakdowns if explicit label exists
+    discounts = data.get("discounts", []) or data.get("lineItems", [])
+    for item in discounts:
+        if isinstance(item, dict) and "label" in item:
+            if "Fuel uplift threshold" in item["label"]:
+                return item["label"]
+
+    # 2. Fallback to waivedFuelGallons key
+    waived_gal = data.get("waivedFuelGallons")
+    if waived_gal is not None:
+        return f"Fuel uplift threshold to waive parking: {waived_gal:,} gal"
+
+    return "N/A"
+
+
 if submitted:
     # Format dates to YYYY-MM-DD
     now = datetime.utcnow()
@@ -130,12 +142,14 @@ if submitted:
             else:
                 data = res["data"]
                 
-                # Retrieve fuel minimum from API response if present, otherwise fallback to form input
-                api_fuel_min = data.get("fuelMinimum", data.get("minimumFuelGallons", fuel_min))
+                # Extract the threshold label shown in the JSON
+                waive_threshold_label = extract_waive_label(data)
+                fuel_min = data.get("waivedFuelGallons", 0)
                 
                 results_summary.append({
                     "Tail Number": tail,
-                    "Fuel Minimum (gal)": f"{api_fuel_min:,} gal",
+                    "Fuel Waive Threshold": waive_threshold_label,
+                    "Fuel Minimum (gal)": f"{fuel_min:,} gal",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Initial Rate": f"${data.get('initialRate', 0):,.2f}",
                     "Total Tax": f"${data.get('tax', 0):,.2f}",
@@ -147,18 +161,25 @@ if submitted:
     if results_summary:
         st.success("Quote(s) retrieved successfully!")
 
-        # Display comparison table
-        if len(results_summary) > 1:
-            st.subheader("Summary Table")
-            df = pd.DataFrame(results_summary)[
-                ["Tail Number", "Fuel Minimum (gal)", "Fuel Purchased (gal)", "Initial Rate", "Total Tax", "Estimated Total"]
+        st.subheader("Summary Table")
+        df = pd.DataFrame(results_summary)[
+            [
+                "Tail Number",
+                "Fuel Waive Threshold",
+                "Fuel Purchased (gal)",
+                "Initial Rate",
+                "Total Tax",
+                "Estimated Total"
             ]
-            st.table(df)
+        ]
+        st.table(df)
 
         st.subheader("Detailed Breakdown")
         for item in results_summary:
             data = item["raw"]
             with st.expander(f"Quote Details: {item['Tail Number']}", expanded=(len(results_summary) == 1)):
+                st.info(f"**Threshold Info:** {item['Fuel Waive Threshold']}")
+                
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Fuel Minimum", item["Fuel Minimum (gal)"])
                 c2.metric("Initial Rate", item["Initial Rate"])
