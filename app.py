@@ -85,4 +85,44 @@ if submitted:
 
                 # Safety Check 3: Extract data safely using .get() to prevent KeyErrors
                 else:
-                    data
+                    data = (
+                        res_data[0]
+                        .get("result", {})
+                        .get("data", {})
+                        .get("json", {})
+                    )
+
+                    if data:
+                        st.success("Quote retrieved successfully!")
+
+                        # Metrics grid
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric(
+                            "Initial Rate",
+                            f"${data.get('initialRate', 0):,.2f}",
+                        )
+                        col2.metric(
+                            "Total Tax", f"${data.get('tax', 0):,.2f}"
+                        )
+                        col3.metric(
+                            "Estimated Total",
+                            f"${data.get('estimatedTotal', 0):,.2f}",
+                        )
+
+                        # Expandable raw output
+                        with st.expander("View Full API Response Details"):
+                            st.json(data)
+                    else:
+                        st.warning(
+                            "Unable to parse pricing data from response."
+                        )
+                        st.json(res_data)
+
+            else:
+                st.error(
+                    f"HTTP Request failed with status code: {response.status_code}"
+                )
+                st.text(response.text)
+
+        except Exception as e:
+            st.error(f"An exception occurred while querying the API: {str(e)}")
