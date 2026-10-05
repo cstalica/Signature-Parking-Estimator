@@ -46,6 +46,13 @@ with st.form("parking_estimator_form"):
     duration_days = st.number_input(
         "Duration of Stay (Days)", min_value=1, max_value=30, value=1, step=1
     )
+    
+    # Fuel Minimum input above Fuel Purchased
+    fuel_min = st.number_input(
+        "Fuel Minimum (Gallons)", min_value=0, value=0, step=10,
+        help="Minimum required fuel uplift to qualify for waived fees or discounts"
+    )
+    
     fuel_gal = st.number_input(
         "Fuel Purchased (Gallons)", min_value=0, value=0, step=10
     )
@@ -122,8 +129,14 @@ if submitted:
                 st.json(res["error"])
             else:
                 data = res["data"]
+                
+                # Retrieve fuel minimum from API response if present, otherwise fallback to form input
+                api_fuel_min = data.get("fuelMinimum", data.get("minimumFuelGallons", fuel_min))
+                
                 results_summary.append({
                     "Tail Number": tail,
+                    "Fuel Minimum (gal)": f"{api_fuel_min:,} gal",
+                    "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Initial Rate": f"${data.get('initialRate', 0):,.2f}",
                     "Total Tax": f"${data.get('tax', 0):,.2f}",
                     "Estimated Total": f"${data.get('estimatedTotal', 0):,.2f}",
@@ -134,19 +147,22 @@ if submitted:
     if results_summary:
         st.success("Quote(s) retrieved successfully!")
 
-        # If querying multiple tail numbers, display a comparison table
+        # Display comparison table
         if len(results_summary) > 1:
             st.subheader("Summary Table")
-            df = pd.DataFrame(results_summary)[["Tail Number", "Initial Rate", "Total Tax", "Estimated Total"]]
+            df = pd.DataFrame(results_summary)[
+                ["Tail Number", "Fuel Minimum (gal)", "Fuel Purchased (gal)", "Initial Rate", "Total Tax", "Estimated Total"]
+            ]
             st.table(df)
 
         st.subheader("Detailed Breakdown")
         for item in results_summary:
             data = item["raw"]
             with st.expander(f"Quote Details: {item['Tail Number']}", expanded=(len(results_summary) == 1)):
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Initial Rate", item["Initial Rate"])
-                col2.metric("Total Tax", item["Total Tax"])
-                col3.metric("Estimated Total", item["Estimated Total"])
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Fuel Minimum", item["Fuel Minimum (gal)"])
+                c2.metric("Initial Rate", item["Initial Rate"])
+                c3.metric("Total Tax", item["Total Tax"])
+                c4.metric("Estimated Total", item["Estimated Total"])
                 
                 st.json(data)
