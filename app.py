@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import pandas as pd
 import requests
 import streamlit as st
 
@@ -28,14 +29,14 @@ FBO_CODES = [
 with st.form("parking_estimator_form"):
     customer_name = st.text_input("Customer Name", value="Koch Industries Inc.")
     
-    # Dropdown selectbox for Tail Numbers
-    tail_number = st.selectbox("Tail Number", options=TAIL_NUMBERS, index=0)
+    # Dropdown with "All Tail Numbers" option
+    tail_options = ["All Tail Numbers"] + TAIL_NUMBERS
+    selected_tail = st.selectbox("Tail Number", options=tail_options, index=0)
     
     aircraft_make_model = st.text_input(
         "Aircraft Make & Model", value="Bombardier Learjet - 75"
     )
     
-    # Dropdown selectbox pre-populated with valid FBO codes
     fbo_base_id = st.selectbox(
         "FBO Base Code / Airport",
         options=FBO_CODES,
@@ -51,25 +52,19 @@ with st.form("parking_estimator_form"):
 
     submitted = st.form_submit_button("Calculate Estimate")
 
-if submitted:
-    # Format dates to YYYY-MM-DD
-    now = datetime.utcnow()
-    dept = now + timedelta(days=duration_days)
 
-    arrival_str = now.strftime("%Y-%m-%d")
-    departure_str = dept.strftime("%Y-%m-%d")
-
-    # Payload structured for tRPC batching
+def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, departure_str, fuel):
+    """Helper function to execute the tRPC API request for a single tail number."""
     payload = {
         "0": {
             "json": {
                 "customerName": customer_name,
-                "tailNumber": tail_number,
-                "aircraftMakeModel": aircraft_make_model,
-                "fboBaseId": fbo_base_id,
+                "tailNumber": tail_num,
+                "aircraftMakeModel": aircraft_model,
+                "fboBaseId": fbo_id,
                 "arrivalDate": arrival_str,
                 "departureDate": departure_str,
-                "fuelGallons": fuel_gal,
+                "fuelGallons": fuel,
             }
         }
     }
@@ -86,58 +81,72 @@ if submitted:
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
 
-    with st.spinner("Fetching estimate from API..."):
-        try:
-            response = requests.post(
-                api_url, json=payload, headers=headers, timeout=10
+    response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+    
+    if response.status_code == 200:
+        res_data = response.json()
+        if "error" in res_data[0]:
+            return {"error": res_data[0]["error"]}
+        data = res_data[0].get("result", {}).get("data", {}).get("json", {})
+        return {"data": data}
+    else:
+        return {"error": f"HTTP {response.status_code}: {response.text}"}
+
+
+if submitted:
+    # Format dates to YYYY-MM-DD
+    now = datetime.utcnow()
+    dept = now + timedelta(days=duration_days)
+    arrival_str = now.strftime("%Y-%m-%d")
+    departure_str = dept.strftime("%Y-%m-%d")
+
+    # Determine list of tail numbers to query
+    target_tails = TAIL_NUMBERS if selected_tail == "All Tail Numbers" else [selected_tail]
+
+    results_summary = []
+    
+    with st.spinner("Fetching estimate(s) from API..."):
+        for tail in target_tails:
+            res = fetch_quote(
+                tail_num=tail,
+                customer_name=customer_name,
+                aircraft_model=aircraft_make_model,
+                fbo_id=fbo_base_id,
+                arrival_str=arrival_str,
+                departure_str=departure_str,
+                fuel=fuel_gal
             )
 
-            if response.status_code == 200:
-                res_data = response.json()
-
-                # Handle tRPC Error Object
-                if "error" in res_data[0]:
-                    st.error("API returned an error:")
-                    st.json(res_data[0]["error"])
-
-                # Safe extraction of results
-                else:
-                    data = (
-                        res_data[0]
-                        .get("result", {})
-                        .get("data", {})
-                        .get("json", {})
-                    )
-
-                    if data:
-                        st.success("Quote retrieved successfully!")
-
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric(
-                            "Initial Rate",
-                            f"${data.get('initialRate', 0):,.2f}",
-                        )
-                        col2.metric(
-                            "Total Tax", f"${data.get('tax', 0):,.2f}"
-                        )
-                        col3.metric(
-                            "Estimated Total",
-                            f"${data.get('estimatedTotal', 0):,.2f}",
-                        )
-
-                        with st.expander("View Full API Response Details"):
-                            st.json(data)
-                    else:
-                        st.warning(
-                            "Unable to parse pricing data from response."
-                        )
-                        st.json(res_data)
-
+            if "error" in res:
+                st.error(f"Error fetching quote for {tail}:")
+                st.json(res["error"])
             else:
-                st.error(
-                    f"HTTP Request failed with status code: {response.status_code}"
-                )
-                st.text(response.text)
+                data = res["data"]
+                results_summary.append({
+                    "Tail Number": tail,
+                    "Initial Rate": f"${data.get('initialRate', 0):,.2f}",
+                    "Total Tax": f"${data.get('tax', 0):,.2f}",
+                    "Estimated Total": f"${data.get('estimatedTotal', 0):,.2f}",
+                    "raw": data
+                })
 
-        except Exception as e:
-            st.error(f"An exception occurred while querying the API: {str(e)}")
+    # Render results
+    if results_summary:
+        st.success("Quote(s) retrieved successfully!")
+
+        # If querying multiple tail numbers, display a comparison table
+        if len(results_summary) > 1:
+            st.subheader("Summary Table")
+            df = pd.DataFrame(results_summary)[["Tail Number", "Initial Rate", "Total Tax", "Estimated Total"]]
+            st.table(df)
+
+        st.subheader("Detailed Breakdown")
+        for item in results_summary:
+            data = item["raw"]
+            with st.expander(f"Quote Details: {item['Tail Number']}", expanded=(len(results_summary) == 1)):
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Initial Rate", item["Initial Rate"])
+                col2.metric("Total Tax", item["Total Tax"])
+                col3.metric("Estimated Total", item["Estimated Total"])
+                
+                st.json(data)
