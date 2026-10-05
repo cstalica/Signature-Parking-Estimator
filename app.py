@@ -120,4 +120,24 @@ if submitted:
                         col2.metric(
                             "Total Tax", f"${data.get('tax', 0):,.2f}"
                         )
-                        col
+                        col3.metric(
+                            "Estimated Total",
+                            f"${data.get('estimatedTotal', 0):,.2f}",
+                        )
+
+                        with st.expander("View Full API Response Details"):
+                            st.json(data)
+                    else:
+                        st.warning(
+                            "Unable to parse pricing data from response."
+                        )
+                        st.json(res_data)
+
+            else:
+                st.error(
+                    f"HTTP Request failed with status code: {response.status_code}"
+                )
+                st.text(response.text)
+
+        except Exception as e:
+            st.error(f"An exception occurred while querying the API: {str(e)}")
