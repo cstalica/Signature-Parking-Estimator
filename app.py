@@ -1,0 +1,65 @@
+from datetime import datetime, timedelta
+import requests
+import streamlit as st
+
+st.set_page_config(
+    page_title="Aircraft Parking Fee Estimator", page_icon="✈️"
+)
+
+st.title("✈️ Aircraft Parking Fee Estimator")
+
+# Form inputs
+with st.form("estimator_form"):
+    company_name = st.text_input("Company Name", value="Koch Industries Inc.")
+    tail_number = st.text_input("Tail Number", value="N730K")
+    aircraft_model = st.text_input(
+        "Aircraft Model", value="Bombardier Learjet - 75"
+    )
+    fbo_code = st.text_input("FBO Airport Code", value="KICT")
+    duration_days = st.number_input(
+        "Duration of Stay (Days)", min_value=1, value=1
+    )
+    fuel_gal = st.number_input("Fuel Purchased (Gallons)", min_value=0, value=0)
+
+    submitted = st.form_submit_button("Calculate Estimate")
+
+if submitted:
+    now = datetime.utcnow()
+    dept = now + timedelta(days=duration_days)
+
+    payload = {
+        "0": {
+            "json": {
+                "companyName": company_name,
+                "tailNumber": tail_number,
+                "aircraftModel": aircraft_model,
+                "fboCode": fbo_code,
+                "arrivalDate": now.isoformat() + "Z",
+                "departureDate": dept.isoformat() + "Z",
+                "fuelGallons": fuel_gal,
+            }
+        }
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        ),
+        "Origin": "https://www.signatureaviation.com",
+        "Referer": "https://www.signatureaviation.com/simplified-parking",
+    }
+
+    url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
+
+    with st.spinner("Fetching quote..."):
+        response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()[0]["result"]["data"]["json"]
+        st.success("Quote retrieved successfully!")
+
+        st.metric("Estimated Total", f"${data.get('estimatedTotal', 0):,.2f}")
+        st.json(data)
+    else:
+        st.error(f"Error fetching data ({response.status_code})")
