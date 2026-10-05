@@ -11,16 +11,37 @@ st.write(
     "Calculate estimated aircraft parking charges using the live Signature Aviation tRPC API."
 )
 
-# Inputs
+# List of pre-configured Tail Numbers
+TAIL_NUMBERS = ["N265K", "N316K", "N681K", "N730K"]
+
+# List of all available FBO codes from Signature Aviation
+FBO_CODES = [
+    "ANC", "AVL", "BCT", "BFM", "BKL", "BNA", "CHO", "CHS", "CID", "DSM",
+    "EFD", "F45", "FAT", "FOK", "FSD", "FXE", "GEG", "GSO", "HHH", "HOU",
+    "HWD", "IAH", "ICT", "INT", "ISM", "JAX", "JCI", "LAX", "LEX", "LFT",
+    "LGB", "LIT", "LUK", "MAF", "MCI", "MCO", "MEM", "MHT", "MKC", "MKE",
+    "MOB", "MSP", "OAK", "OMA", "ORF", "PHK", "PSP", "RDU", "ROA", "SAV",
+    "SBA", "SCF", "SHV", "SJC", "STP", "TXK"
+]
+
+# Form Inputs
 with st.form("parking_estimator_form"):
     customer_name = st.text_input("Customer Name", value="Koch Industries Inc.")
-    tail_number = st.text_input("Tail Number", value="N730K")
+    
+    # Dropdown selectbox for Tail Numbers
+    tail_number = st.selectbox("Tail Number", options=TAIL_NUMBERS, index=0)
+    
     aircraft_make_model = st.text_input(
         "Aircraft Make & Model", value="Bombardier Learjet - 75"
     )
-    fbo_input = st.text_input(
-        "FBO Base Code / ID", value="ICT", help="3-letter IATA code (e.g., ICT, APA, BCT, BNA)"
+    
+    # Dropdown selectbox pre-populated with valid FBO codes
+    fbo_base_id = st.selectbox(
+        "FBO Base Code / Airport",
+        options=FBO_CODES,
+        index=FBO_CODES.index("ICT")  # Default to ICT
     )
+    
     duration_days = st.number_input(
         "Duration of Stay (Days)", min_value=1, max_value=30, value=1, step=1
     )
@@ -31,11 +52,6 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 if submitted:
-    # Normalize 4-letter ICAO inputs (e.g., convert "KICT" -> "ICT")
-    fbo_base_id = fbo_input.strip().upper()
-    if len(fbo_base_id) == 4 and fbo_base_id.startswith("K"):
-        fbo_base_id = fbo_base_id[1:]
-
     # Format dates to YYYY-MM-DD
     now = datetime.utcnow()
     dept = now + timedelta(days=duration_days)
@@ -65,9 +81,7 @@ if submitted:
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Origin": "https://www.signatureaviation.com",
-        "Referer": (
-            "url?id=12"
-        ),
+        "Referer": "https://www.signatureaviation.com/simplified-parking",
     }
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
@@ -106,24 +120,4 @@ if submitted:
                         col2.metric(
                             "Total Tax", f"${data.get('tax', 0):,.2f}"
                         )
-                        col3.metric(
-                            "Estimated Total",
-                            f"${data.get('estimatedTotal', 0):,.2f}",
-                        )
-
-                        with st.expander("View Full API Response Details"):
-                            st.json(data)
-                    else:
-                        st.warning(
-                            "Unable to parse pricing data from response."
-                        )
-                        st.json(res_data)
-
-            else:
-                st.error(
-                    f"HTTP Request failed with status code: {response.status_code}"
-                )
-                st.text(response.text)
-
-        except Exception as e:
-            st.error(f"An exception occurred while querying the API: {str(e)}")
+                        col
