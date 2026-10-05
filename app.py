@@ -132,7 +132,7 @@ if submitted:
     
     with st.spinner("Fetching estimate(s) from API..."):
         for tail in target_tails:
-            # 1. Fetch initial quote based on user input
+            # Fetch initial quote based on user input
             res = fetch_quote(
                 tail_num=tail,
                 customer_name=customer_name,
@@ -150,11 +150,10 @@ if submitted:
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
                 est_total = data.get("estimatedTotal", 0)
                 
-                # 2. Fetch quote for the threshold amount to find the waived total
+                # Fetch quote for the threshold amount to find the waived total
                 est_total_at_threshold_str = "N/A"
                 if threshold_gal is not None:
                     if fuel_gal >= threshold_gal:
-                        # Already meeting threshold
                         est_total_at_threshold_str = f"${est_total:,.2f}"
                     else:
                         thresh_res = fetch_quote(
@@ -175,8 +174,6 @@ if submitted:
                     "Tail Number": tail,
                     "Fuel Waive Threshold": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Initial Rate": f"${data.get('initialRate', 0):,.2f}",
-                    "Total Tax": f"${data.get('tax', 0):,.2f}",
                     "Current Estimated Total": f"${est_total:,.2f}",
                     "Est. Total if Threshold Met": est_total_at_threshold_str,
                     "raw": data,
@@ -188,8 +185,6 @@ if submitted:
                     "Tail Number": tail,
                     "Fuel Waive Threshold": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Initial Rate": "N/A",
-                    "Total Tax": "N/A",
                     "Current Estimated Total": "N/A",
                     "Est. Total if Threshold Met": "N/A",
                     "raw": res.get("raw") or res.get("error"),
@@ -206,8 +201,6 @@ if submitted:
                 "Tail Number",
                 "Fuel Waive Threshold",
                 "Fuel Purchased (gal)",
-                "Initial Rate",
-                "Total Tax",
                 "Current Estimated Total",
                 "Est. Total if Threshold Met"
             ]
@@ -223,12 +216,11 @@ if submitted:
                 if item["is_error"]:
                     st.error(f"Data Retrieval Failed: {item.get('error_msg')}")
                 else:
-                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1, c2, c3, c4 = st.columns(4)
                     c1.metric("Waive Threshold", item["Fuel Waive Threshold"])
-                    c2.metric("Initial Rate", item["Initial Rate"])
-                    c3.metric("Total Tax", item["Total Tax"])
-                    c4.metric("Current Total", item["Current Estimated Total"])
-                    c5.metric("Total at Threshold", item["Est. Total if Threshold Met"])
+                    c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
+                    c3.metric("Current Total", item["Current Estimated Total"])
+                    c4.metric("Total at Threshold", item["Est. Total if Threshold Met"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
