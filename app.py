@@ -18,8 +18,8 @@ with st.form("parking_estimator_form"):
     aircraft_make_model = st.text_input(
         "Aircraft Make & Model", value="Bombardier Learjet - 75"
     )
-    fbo_base_id = st.text_input(
-        "FBO Base Code / ID", value="KICT", help="ICAO Code (e.g., KICT, KAPA)"
+    fbo_input = st.text_input(
+        "FBO Base Code / ID", value="ICT", help="3-letter IATA code (e.g., ICT, APA, BCT, BNA)"
     )
     duration_days = st.number_input(
         "Duration of Stay (Days)", min_value=1, max_value=30, value=1, step=1
@@ -31,14 +31,19 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 if submitted:
-    # Format dates to YYYY-MM-DD as required by the backend regex schema
+    # Normalize 4-letter ICAO inputs (e.g., convert "KICT" -> "ICT")
+    fbo_base_id = fbo_input.strip().upper()
+    if len(fbo_base_id) == 4 and fbo_base_id.startswith("K"):
+        fbo_base_id = fbo_base_id[1:]
+
+    # Format dates to YYYY-MM-DD
     now = datetime.utcnow()
     dept = now + timedelta(days=duration_days)
 
     arrival_str = now.strftime("%Y-%m-%d")
     departure_str = dept.strftime("%Y-%m-%d")
 
-    # Payload matching the exact backend Zod validation schema
+    # Payload structured for tRPC batching
     payload = {
         "0": {
             "json": {
@@ -61,7 +66,7 @@ if submitted:
         ),
         "Origin": "https://www.signatureaviation.com",
         "Referer": (
-            "url?id=7"
+            "url?id=12"
         ),
     }
 
@@ -78,7 +83,7 @@ if submitted:
 
                 # Handle tRPC Error Object
                 if "error" in res_data[0]:
-                    st.error("API returned a validation error:")
+                    st.error("API returned an error:")
                     st.json(res_data[0]["error"])
 
                 # Safe extraction of results
