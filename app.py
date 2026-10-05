@@ -214,11 +214,11 @@ if submitted:
                 results_summary.append({
                     "Status": "🟢 Success",
                     "Tail Number": tail,
-                    "Fuel Waive Threshold": threshold_display,
+                    "Min Fuel for Discount": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Current Estimated Total": f"${est_total:,.2f}",
                     "Fuel Uplift Discount": f"-${discount_amount_val:,.2f}" if discount_amount_val > 0 else "$0.00",
-                    "Est. Total if Threshold Met": est_total_at_threshold_str,
+                    "Est. Total if min fuel purchased": est_total_at_threshold_str,
                     "raw": data,
                     "is_error": False
                 })
@@ -227,11 +227,11 @@ if submitted:
                 results_summary.append({
                     "Status": "🔴 Failed",
                     "Tail Number": tail,
-                    "Fuel Waive Threshold": "N/A",
+                    "Min Fuel for Discount": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Current Estimated Total": "N/A",
                     "Fuel Uplift Discount": "N/A",
-                    "Est. Total if Threshold Met": "N/A",
+                    "Est. Total if min fuel purchased": "N/A",
                     "raw": res.get("raw") or res.get("error"),
                     "is_error": True,
                     "error_msg": res.get("error")
@@ -246,11 +246,11 @@ if submitted:
             [
                 "Status",
                 "Tail Number",
-                "Fuel Waive Threshold",
+                "Min Fuel for Discount",
                 "Fuel Purchased (gal)",
                 "Current Estimated Total",
                 "Fuel Uplift Discount",
-                "Est. Total if Threshold Met"
+                "Est. Total if min fuel purchased"
             ]
         ]
         st.table(df)
@@ -265,11 +265,11 @@ if submitted:
                     st.error(f"Data Retrieval Failed: {item.get('error_msg')}")
                 else:
                     c1, c2, c3, c4, c5 = st.columns(5)
-                    c1.metric("Waive Threshold", item["Fuel Waive Threshold"])
+                    c1.metric("Min Fuel for Discount", item["Min Fuel for Discount"])
                     c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
                     c3.metric("Current Total", item["Current Estimated Total"])
                     c4.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
-                    c5.metric("Total at Threshold", item["Est. Total if Threshold Met"])
+                    c5.metric("Est. Total if min fuel purchased", item["Est. Total if min fuel purchased"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
