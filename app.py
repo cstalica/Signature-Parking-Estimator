@@ -13,13 +13,13 @@ st.write(
 
 # Inputs
 with st.form("parking_estimator_form"):
-    company_name = st.text_input("Company Name", value="Koch Industries Inc.")
+    customer_name = st.text_input("Customer Name", value="Koch Industries Inc.")
     tail_number = st.text_input("Tail Number", value="N730K")
-    aircraft_model = st.text_input(
-        "Aircraft Model", value="Bombardier Learjet - 75"
+    aircraft_make_model = st.text_input(
+        "Aircraft Make & Model", value="Bombardier Learjet - 75"
     )
-    fbo_code = st.text_input(
-        "FBO Airport Code", value="KICT", help="ICAO Code (e.g., KICT, KAPA)"
+    fbo_base_id = st.text_input(
+        "FBO Base Code / ID", value="KICT", help="ICAO Code (e.g., KICT, KAPA)"
     )
     duration_days = st.number_input(
         "Duration of Stay (Days)", min_value=1, max_value=30, value=1, step=1
@@ -31,20 +31,23 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 if submitted:
-    # Generate arrival and departure timestamps
+    # Generate arrival and departure timestamps (formatted to standard ISO string without microseconds)
     now = datetime.utcnow()
     dept = now + timedelta(days=duration_days)
 
-    # Payload structured for tRPC batching
+    arrival_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    departure_str = dept.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Corrected payload matching the backend Zod validation schema
     payload = {
         "0": {
             "json": {
-                "companyName": company_name,
+                "customerName": customer_name,
                 "tailNumber": tail_number,
-                "aircraftModel": aircraft_model,
-                "fboCode": fbo_code,
-                "arrivalDate": now.isoformat() + "Z",
-                "departureDate": dept.isoformat() + "Z",
+                "aircraftMakeModel": aircraft_make_model,
+                "fboBaseId": fbo_base_id,
+                "arrivalDate": arrival_str,
+                "departureDate": departure_str,
                 "fuelGallons": fuel_gal,
             }
         }
@@ -73,17 +76,12 @@ if submitted:
             if response.status_code == 200:
                 res_data = response.json()
 
-                # Safety Check 1: Check if response array is empty
-                if not isinstance(res_data, list) or len(res_data) == 0:
-                    st.error("Unexpected response structure from server.")
-                    st.json(res_data)
-
-                # Safety Check 2: Handle tRPC Error Object
-                elif "error" in res_data[0]:
+                # Handle tRPC Error Object
+                if "error" in res_data[0]:
                     st.error("API returned a validation error:")
                     st.json(res_data[0]["error"])
 
-                # Safety Check 3: Extract data safely using .get() to prevent KeyErrors
+                # Safe extraction of results
                 else:
                     data = (
                         res_data[0]
@@ -95,7 +93,7 @@ if submitted:
                     if data:
                         st.success("Quote retrieved successfully!")
 
-                        # Metrics grid
+                        # Display key metrics
                         col1, col2, col3 = st.columns(3)
                         col1.metric(
                             "Initial Rate",
@@ -109,7 +107,6 @@ if submitted:
                             f"${data.get('estimatedTotal', 0):,.2f}",
                         )
 
-                        # Expandable raw output
                         with st.expander("View Full API Response Details"):
                             st.json(data)
                     else:
