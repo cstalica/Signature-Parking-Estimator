@@ -130,8 +130,11 @@ if submitted:
     target_tails = TAIL_NUMBERS if selected_tail == "All Tail Numbers" else [selected_tail]
     results_summary = []
     
-    with st.spinner("Fetching estimate(s) from API..."):
-        for tail in target_tails:
+    # Status block for live updates during retrieval
+    with st.status("Fetching estimate(s) from Signature Aviation API...", expanded=True) as status:
+        for idx, tail in enumerate(target_tails, 1):
+            status.write(f"⏳ **[{idx}/{len(target_tails)}]** Requesting initial quote for **{tail}**...")
+            
             # Fetch initial quote based on user input
             res = fetch_quote(
                 tail_num=tail,
@@ -146,16 +149,15 @@ if submitted:
             if res["success"]:
                 data = res["data"]
                 threshold_gal = parse_threshold_gallons(data)
-                
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
                 est_total = data.get("estimatedTotal", 0)
                 
-                # Fetch quote for the threshold amount to find the waived total
                 est_total_at_threshold_str = "N/A"
                 if threshold_gal is not None:
                     if fuel_gal >= threshold_gal:
                         est_total_at_threshold_str = f"${est_total:,.2f}"
                     else:
+                        status.write(f"   ↳ Requesting threshold quote ({threshold_gal} gal) for **{tail}**...")
                         thresh_res = fetch_quote(
                             tail_num=tail,
                             customer_name=customer_name,
@@ -168,6 +170,8 @@ if submitted:
                         if thresh_res["success"]:
                             thresh_total = thresh_res["data"].get("estimatedTotal", 0)
                             est_total_at_threshold_str = f"${thresh_total:,.2f}"
+
+                status.write(f"✅ **{tail}** — Quote retrieved successfully!")
                 
                 results_summary.append({
                     "Status": "🟢 Success",
@@ -180,6 +184,7 @@ if submitted:
                     "is_error": False
                 })
             else:
+                status.write(f"❌ **{tail}** — Request failed: {res.get('error')}")
                 results_summary.append({
                     "Status": "🔴 Failed",
                     "Tail Number": tail,
@@ -191,6 +196,8 @@ if submitted:
                     "is_error": True,
                     "error_msg": res.get("error")
                 })
+
+        status.update(label="Data retrieval complete!", state="complete", expanded=False)
 
     # Render results
     if results_summary:
