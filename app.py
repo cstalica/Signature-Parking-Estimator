@@ -120,6 +120,34 @@ def parse_threshold_gallons(data):
     return None
 
 
+def extract_discount_amount(data):
+    """Extracts total discount amount applied from discounts array or initial rate comparison."""
+    if not data:
+        return 0.0
+
+    # Check for discount line items in payload
+    discounts = data.get("discounts", []) or data.get("lineItems", [])
+    total_disc = 0.0
+    for item in discounts:
+        if isinstance(item, dict):
+            amt = item.get("amount", 0)
+            if amt < 0:
+                total_disc += abs(amt)
+
+    if total_disc > 0:
+        return total_disc
+
+    # Fallback: calculate difference if initialRate and estimatedTotal exist
+    initial = data.get("initialRate", 0)
+    total = data.get("estimatedTotal", 0)
+    tax = data.get("tax", 0)
+    
+    if initial > 0 and (initial + tax) > total:
+        return (initial + tax) - total
+
+    return 0.0
+
+
 if submitted:
     # Format dates to YYYY-MM-DD
     now = datetime.utcnow()
@@ -151,6 +179,7 @@ if submitted:
                 threshold_gal = parse_threshold_gallons(data)
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
                 est_total = data.get("estimatedTotal", 0)
+                current_discount = extract_discount_amount(data)
                 
                 est_total_at_threshold_str = "N/A"
                 if threshold_gal is not None:
@@ -179,6 +208,7 @@ if submitted:
                     "Fuel Waive Threshold": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Current Estimated Total": f"${est_total:,.2f}",
+                    "Discount Amount": f"-${current_discount:,.2f}" if current_discount > 0 else "$0.00",
                     "Est. Total if Threshold Met": est_total_at_threshold_str,
                     "raw": data,
                     "is_error": False
@@ -191,6 +221,7 @@ if submitted:
                     "Fuel Waive Threshold": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Current Estimated Total": "N/A",
+                    "Discount Amount": "N/A",
                     "Est. Total if Threshold Met": "N/A",
                     "raw": res.get("raw") or res.get("error"),
                     "is_error": True,
@@ -209,6 +240,7 @@ if submitted:
                 "Fuel Waive Threshold",
                 "Fuel Purchased (gal)",
                 "Current Estimated Total",
+                "Discount Amount",
                 "Est. Total if Threshold Met"
             ]
         ]
@@ -223,11 +255,12 @@ if submitted:
                 if item["is_error"]:
                     st.error(f"Data Retrieval Failed: {item.get('error_msg')}")
                 else:
-                    c1, c2, c3, c4 = st.columns(4)
+                    c1, c2, c3, c4, c5 = st.columns(5)
                     c1.metric("Waive Threshold", item["Fuel Waive Threshold"])
                     c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
                     c3.metric("Current Total", item["Current Estimated Total"])
-                    c4.metric("Total at Threshold", item["Est. Total if Threshold Met"])
+                    c4.metric("Discount Amount", item["Discount Amount"])
+                    c5.metric("Total at Threshold", item["Est. Total if Threshold Met"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
