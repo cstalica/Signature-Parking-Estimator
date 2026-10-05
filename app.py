@@ -79,7 +79,7 @@ def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, de
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Origin": "https://www.signatureaviation.com",
-        "Referer": "https://www.signatureaviation.com/simplified-parking",
+        "Referer": "url?id=4",
     }
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
@@ -120,30 +120,52 @@ def parse_threshold_gallons(data):
     return None
 
 
-def extract_discount_amount(data):
-    """Extracts discount amount from discounts list or by comparing initial rate and total."""
+def extract_length_of_stay_discount(data):
+    """Extracts length of stay discount amount specifically from payload."""
     if not data:
         return 0.0
 
-    # 1. Check discounts / lineItems array in payload
+    # 1. Check inside discounts or lineItems array for length of stay label
+    discounts = data.get("discounts", []) or data.get("lineItems", [])
+    for item in discounts:
+        if isinstance(item, dict):
+            label = str(item.get("label", "") or item.get("description", "")).lower()
+            if "length" in label or "stay" in label:
+                return abs(item.get("amount", 0.0))
+
+    # 2. Check direct key if available
+    if "lengthOfStayDiscount" in data:
+        return abs(float(data.get("lengthOfStayDiscount", 0.0)))
+
+    return 0.0
+
+
+def extract_discount_amount(data):
+    """Extracts fuel uplift discount amount from discounts list or by comparing initial rate and total."""
+    if not data:
+        return 0.0
+
+    # 1. Check discounts / lineItems array in payload for fuel uplift
     discounts = data.get("discounts", []) or data.get("lineItems", [])
     total_disc = 0.0
     for item in discounts:
         if isinstance(item, dict):
+            label = str(item.get("label", "") or item.get("description", "")).lower()
             amt = item.get("amount", 0)
-            if amt < 0:
+            if amt < 0 and "length" not in label:
                 total_disc += abs(amt)
 
     if total_disc > 0:
         return total_disc
 
-    # 2. Fallback: Difference between initial rate and estimated total
+    # 2. Fallback: Difference between initial rate and estimated total (minus length of stay)
     initial = data.get("initialRate", 0)
     total = data.get("estimatedTotal", 0)
     tax = data.get("tax", 0)
+    los_disc = extract_length_of_stay_discount(data)
     
-    if initial > 0 and (initial + tax) > total:
-        return (initial + tax) - total
+    if initial > 0 and (initial + tax - los_disc) > total:
+        return (initial + tax - los_disc) - total
 
     return 0.0
 
@@ -180,6 +202,9 @@ if submitted:
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
                 est_total = data.get("estimatedTotal", 0)
                 
+                # Extract Length of Stay Discount from initial response
+                los_discount_val = extract_length_of_stay_discount(data)
+                
                 # Fetch threshold quote to obtain the discounted rate & discount value
                 est_total_at_threshold_str = "N/A"
                 discount_amount_val = 0.0
@@ -204,6 +229,10 @@ if submitted:
                             thresh_total = thresh_data.get("estimatedTotal", 0)
                             est_total_at_threshold_str = f"${thresh_total:,.2f}"
                             
+                            # Extract length of stay discount if present in threshold response
+                            if los_discount_val == 0.0:
+                                los_discount_val = extract_length_of_stay_discount(thresh_data)
+
                             # Extract discount from the threshold response or calculate savings
                             discount_amount_val = extract_discount_amount(thresh_data)
                             if discount_amount_val == 0.0:
@@ -217,6 +246,7 @@ if submitted:
                     "Min Fuel for Discount": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Current Estimated Total": f"${est_total:,.2f}",
+                    "Length of Stay Discount": f"-${los_discount_val:,.2f}" if los_discount_val > 0 else "$0.00",
                     "Fuel Uplift Discount": f"-${discount_amount_val:,.2f}" if discount_amount_val > 0 else "$0.00",
                     "Est. Total if min fuel purchased": est_total_at_threshold_str,
                     "raw": data,
@@ -230,6 +260,7 @@ if submitted:
                     "Min Fuel for Discount": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
                     "Current Estimated Total": "N/A",
+                    "Length of Stay Discount": "N/A",
                     "Fuel Uplift Discount": "N/A",
                     "Est. Total if min fuel purchased": "N/A",
                     "raw": res.get("raw") or res.get("error"),
@@ -249,6 +280,7 @@ if submitted:
                 "Min Fuel for Discount",
                 "Fuel Purchased (gal)",
                 "Current Estimated Total",
+                "Length of Stay Discount",
                 "Fuel Uplift Discount",
                 "Est. Total if min fuel purchased"
             ]
@@ -264,12 +296,13 @@ if submitted:
                 if item["is_error"]:
                     st.error(f"Data Retrieval Failed: {item.get('error_msg')}")
                 else:
-                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1, c2, c3, c4, c5, c6 = st.columns(6)
                     c1.metric("Min Fuel for Discount", item["Min Fuel for Discount"])
                     c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
                     c3.metric("Current Total", item["Current Estimated Total"])
-                    c4.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
-                    c5.metric("Est. Total if min fuel purchased", item["Est. Total if min fuel purchased"])
+                    c4.metric("Length of Stay Discount", item["Length of Stay Discount"])
+                    c5.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
+                    c6.metric("Est. Total if min fuel purchased", item["Est. Total if min fuel purchased"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
