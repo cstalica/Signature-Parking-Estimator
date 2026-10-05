@@ -31,14 +31,14 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 if submitted:
-    # Generate arrival and departure timestamps (formatted to standard ISO string without microseconds)
+    # Format dates to YYYY-MM-DD as required by the backend regex schema
     now = datetime.utcnow()
     dept = now + timedelta(days=duration_days)
 
-    arrival_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    departure_str = dept.strftime("%Y-%m-%dT%H:%M:%SZ")
+    arrival_str = now.strftime("%Y-%m-%d")
+    departure_str = dept.strftime("%Y-%m-%d")
 
-    # Corrected payload matching the backend Zod validation schema
+    # Payload matching the exact backend Zod validation schema
     payload = {
         "0": {
             "json": {
@@ -61,7 +61,7 @@ if submitted:
         ),
         "Origin": "https://www.signatureaviation.com",
         "Referer": (
-            "https://www.signatureaviation.com/simplified-parking#parking-estimator"
+            "url?id=7"
         ),
     }
 
@@ -93,7 +93,6 @@ if submitted:
                     if data:
                         st.success("Quote retrieved successfully!")
 
-                        # Display key metrics
                         col1, col2, col3 = st.columns(3)
                         col1.metric(
                             "Initial Rate",
