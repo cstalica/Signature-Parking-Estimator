@@ -54,7 +54,7 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 
-def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, departure_str, fuel):
+def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, departure_str, fuel, arrival_time="00:00"):
     """Helper function to execute the tRPC API request for a single tail number."""
     payload = {
         "0": {
@@ -64,6 +64,7 @@ def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, de
                 "aircraftMakeModel": aircraft_model,
                 "fboBaseId": fbo_id,
                 "arrivalDate": arrival_str,
+                "arrivalTime": arrival_time,
                 "departureDate": departure_str,
                 "fuelGallons": fuel,
             }
@@ -183,11 +184,15 @@ def extract_all_discounts(data):
 
 if submitted:
     now = datetime.utcnow()
-    arrival_str = now.strftime("%Y-%m-%d")
     
-    # Always set departure date to next day at 00:00:00 (12:00 AM)
-    next_day = now + timedelta(days=1)
-    departure_str = next_day.strftime("%Y-%m-%d")
+    # Arrival is always tomorrow at 12:00 AM (00:00)
+    arrival_dt = now + timedelta(days=1)
+    arrival_str = arrival_dt.strftime("%Y-%m-%d")
+    arrival_time = "00:00"
+    
+    # Departure date is calculated based on duration_days from arrival date
+    departure_dt = arrival_dt + timedelta(hours=float(duration_days * 24))
+    departure_str = departure_dt.strftime("%Y-%m-%d")
 
     # Hardcode customer name for the API call while keeping it hidden from the UI
     customer_name = "Koch"
@@ -206,7 +211,8 @@ if submitted:
                 fbo_id=fbo_base_id,
                 arrival_str=arrival_str,
                 departure_str=departure_str,
-                fuel=fuel_gal
+                fuel=fuel_gal,
+                arrival_time=arrival_time
             )
 
             if res["success"]:
@@ -231,7 +237,8 @@ if submitted:
                             fbo_id=fbo_base_id,
                             arrival_str=arrival_str,
                             departure_str=departure_str,
-                            fuel=threshold_gal
+                            fuel=threshold_gal,
+                            arrival_time=arrival_time
                         )
                         if thresh_res["success"]:
                             thresh_data = thresh_res["data"]
