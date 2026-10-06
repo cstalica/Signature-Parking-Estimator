@@ -42,8 +42,8 @@ with st.form("parking_estimator_form"):
         index=FBO_CODES.index("CHO")  # KCHO
     )
     
-    duration_days = st.number_input(
-        "Duration of Stay (Days)", min_value=0.1, max_value=30.0, value=2.0, step=0.5
+    duration_hours = st.number_input(
+        "Duration of Stay (Hours)", min_value=1, max_value=720, value=48, step=1
     )
     
     # Fuel Purchased Input
@@ -54,7 +54,17 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 
-def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, departure_str, fuel, arrival_time="00:00"):
+def fetch_quote(
+    customer_name,
+    tail_num,
+    aircraft_model,
+    fbo_id,
+    arrival_str,
+    departure_str,
+    fuel,
+    arrival_time="00:00",
+    departure_time="00:00"
+):
     """Helper function to execute the tRPC API request for a single tail number."""
     payload = {
         "0": {
@@ -66,6 +76,7 @@ def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, de
                 "arrivalDate": arrival_str,
                 "arrivalTime": arrival_time,
                 "departureDate": departure_str,
+                "departureTime": departure_time,
                 "fuelGallons": fuel,
             }
         }
@@ -185,14 +196,15 @@ def extract_all_discounts(data):
 if submitted:
     now = datetime.utcnow()
     
-    # Arrival is always tomorrow at 12:00 AM (00:00)
-    arrival_dt = now + timedelta(days=1)
+    # Arrival Date is tomorrow, Arrival Time is 12:00 AM (00:00)
+    arrival_dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     arrival_str = arrival_dt.strftime("%Y-%m-%d")
     arrival_time = "00:00"
     
-    # Departure date is calculated based on duration_days from arrival date
-    departure_dt = arrival_dt + timedelta(hours=float(duration_days * 24))
+    # Calculate Departure Datetime from Arrival Datetime + Duration (Hours)
+    departure_dt = arrival_dt + timedelta(hours=int(duration_hours))
     departure_str = departure_dt.strftime("%Y-%m-%d")
+    departure_time = departure_dt.strftime("%H:%M")
 
     # Hardcode customer name for the API call while keeping it hidden from the UI
     customer_name = "Koch"
@@ -212,7 +224,8 @@ if submitted:
                 arrival_str=arrival_str,
                 departure_str=departure_str,
                 fuel=fuel_gal,
-                arrival_time=arrival_time
+                arrival_time=arrival_time,
+                departure_time=departure_time
             )
 
             if res["success"]:
@@ -238,7 +251,8 @@ if submitted:
                             arrival_str=arrival_str,
                             departure_str=departure_str,
                             fuel=threshold_gal,
-                            arrival_time=arrival_time
+                            arrival_time=arrival_time,
+                            departure_time=departure_time
                         )
                         if thresh_res["success"]:
                             thresh_data = thresh_res["data"]
