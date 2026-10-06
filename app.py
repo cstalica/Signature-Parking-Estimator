@@ -28,8 +28,6 @@ FBO_CODES = [
 
 # Form Inputs
 with st.form("parking_estimator_form"):
-    customer_name = st.text_input("Customer Name", value="John Doe")
-
     # Dropdown with "All Tail Numbers" option
     tail_options = ["All Tail Numbers"] + TAIL_NUMBERS
     selected_tail = st.selectbox("Tail Number", options=tail_options, index=0)
@@ -79,7 +77,7 @@ def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, de
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Origin": "https://www.signatureaviation.com",
-        "Referer": "https://www.signatureaviation.com/simplified-parking",
+        "Referer": "url?id=4",
     }
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
@@ -189,6 +187,9 @@ if submitted:
     arrival_str = now.strftime("%Y-%m-%d")
     departure_str = dept.strftime("%Y-%m-%d")
 
+    # Hardcode customer name for the API call while keeping it hidden from the UI
+    customer_name = "Koch"
+
     target_tails = TAIL_NUMBERS if selected_tail == "All Tail Numbers" else [selected_tail]
     results_summary = []
     
@@ -244,7 +245,6 @@ if submitted:
                 
                 results_summary.append({
                     "Status": "🟢 Success",
-                    "Customer Name": customer_name,
                     "Tail Number": tail,
                     "Min Fuel for Discount": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
@@ -260,7 +260,6 @@ if submitted:
                 status.write(f"❌ **{tail}** — Request failed: {res.get('error')}")
                 results_summary.append({
                     "Status": "🔴 Failed",
-                    "Customer Name": customer_name,
                     "Tail Number": tail,
                     "Min Fuel for Discount": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
@@ -282,7 +281,6 @@ if submitted:
         df = pd.DataFrame(results_summary)[
             [
                 "Status",
-                "Customer Name",
                 "Tail Number",
                 "Min Fuel for Discount",
                 "Fuel Purchased (gal)",
@@ -298,7 +296,7 @@ if submitted:
         st.subheader("Detailed Breakdown")
         for item in results_summary:
             status_text = "ERROR" if item["is_error"] else "SUCCESS"
-            expander_title = f"{item['Tail Number']} ({item['Customer Name']}) — [{status_text}]"
+            expander_title = f"{item['Tail Number']} — [{status_text}]"
             
             with st.expander(expander_title, expanded=(len(results_summary) == 1)):
                 if item["is_error"]:
