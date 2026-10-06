@@ -42,7 +42,6 @@ with st.form("parking_estimator_form"):
         index=FBO_CODES.index("CHO")  # KCHO
     )
     
-    # Updated to float to support fractional days like 0.5
     duration_days = st.number_input(
         "Duration of Stay (Days)", min_value=0.1, max_value=30.0, value=2.0, step=0.5
     )
@@ -184,10 +183,11 @@ def extract_all_discounts(data):
 
 if submitted:
     now = datetime.utcnow()
-    # Supports fractional days via timedelta hours
-    dept = now + timedelta(hours=float(duration_days * 24))
     arrival_str = now.strftime("%Y-%m-%d")
-    departure_str = dept.strftime("%Y-%m-%d")
+    
+    # Always set departure date to next day at 00:00:00 (12:00 AM)
+    next_day = now + timedelta(days=1)
+    departure_str = next_day.strftime("%Y-%m-%d")
 
     # Hardcode customer name for the API call while keeping it hidden from the UI
     customer_name = "Koch"
