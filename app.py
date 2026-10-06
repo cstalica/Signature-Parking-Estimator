@@ -28,8 +28,6 @@ FBO_CODES = [
 
 # Form Inputs
 with st.form("parking_estimator_form"):
-    customer_name = st.text_input("Customer Name", value="Koch Industries Inc.")
-    
     # Dropdown with "All Tail Numbers" option
     tail_options = ["All Tail Numbers"] + TAIL_NUMBERS
     selected_tail = st.selectbox("Tail Number", options=tail_options, index=0)
@@ -56,12 +54,11 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 
-def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, departure_str, fuel):
+def fetch_quote(tail_num, aircraft_model, fbo_id, arrival_str, departure_str, fuel):
     """Helper function to execute the tRPC API request for a single tail number."""
     payload = {
         "0": {
             "json": {
-                "customerName": customer_name,
                 "tailNumber": tail_num,
                 "aircraftMakeModel": aircraft_model,
                 "fboBaseId": fbo_id,
@@ -124,7 +121,6 @@ def extract_all_discounts(data):
     """
     Parses the response object to find Total Discount, Fuel Uplift Discount, 
     and Length of Stay Discount.
-    Returns a dictionary with float values for each.
     """
     discounts_breakdown = {
         "total_discount": 0.0,
@@ -135,12 +131,10 @@ def extract_all_discounts(data):
     if not isinstance(data, dict):
         return discounts_breakdown
 
-    # Collect all candidate discount lists/arrays in payload
     discount_items = []
     
     def collect_items(obj):
         if isinstance(obj, dict):
-            # Check if this object itself represents a line item
             if "label" in obj or "description" in obj:
                 discount_items.append(obj)
             for v in obj.values():
@@ -159,19 +153,15 @@ def extract_all_discounts(data):
             try:
                 numeric_val = abs(float(amt_val))
                 if numeric_val > 0:
-                    # Match Length of stay discount
                     if "length" in label and "stay" in label:
                         discounts_breakdown["length_of_stay_discount"] = numeric_val
-                    # Match Fuel uplift discount
                     elif "fuel" in label and "uplift" in label:
                         discounts_breakdown["fuel_uplift_discount"] = numeric_val
-                    # Match overarching Total Discount line (e.g., label == "discount" or "discount applied")
                     elif label in ["discount", "discount applied", "total discount"]:
                         discounts_breakdown["total_discount"] = numeric_val
             except (ValueError, TypeError):
                 pass
 
-    # If total_discount wasn't explicitly labeled, compute it as sum of sub-discounts or residual
     if discounts_breakdown["total_discount"] == 0.0:
         sub_sum = (
             discounts_breakdown["fuel_uplift_discount"] 
@@ -180,7 +170,6 @@ def extract_all_discounts(data):
         if sub_sum > 0:
             discounts_breakdown["total_discount"] = sub_sum
         else:
-            # Fallback to direct top-level field if present
             direct_disc = data.get("discount") or data.get("totalDiscount")
             if direct_disc:
                 try:
@@ -192,7 +181,6 @@ def extract_all_discounts(data):
 
 
 if submitted:
-    # Format dates to YYYY-MM-DD
     now = datetime.utcnow()
     dept = now + timedelta(days=duration_days)
     arrival_str = now.strftime("%Y-%m-%d")
@@ -201,15 +189,12 @@ if submitted:
     target_tails = TAIL_NUMBERS if selected_tail == "All Tail Numbers" else [selected_tail]
     results_summary = []
     
-    # Status block for live updates during retrieval
     with st.status("Fetching estimate(s) from Signature Aviation API...", expanded=True) as status:
         for idx, tail in enumerate(target_tails, 1):
             status.write(f"⏳ **[{idx}/{len(target_tails)}]** Requesting initial quote for **{tail}**...")
             
-            # Fetch initial quote based on user input
             res = fetch_quote(
                 tail_num=tail,
-                customer_name=customer_name,
                 aircraft_model=aircraft_make_model,
                 fbo_id=fbo_base_id,
                 arrival_str=arrival_str,
@@ -223,10 +208,8 @@ if submitted:
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
                 est_total = data.get("estimatedTotal", 0.0)
                 
-                # Extract all 3 discounts from initial response
                 disc_info = extract_all_discounts(data)
                 
-                # Fetch threshold quote to obtain the estimated total at minimum fuel
                 est_total_at_threshold_str = "N/A"
                 
                 if threshold_gal is not None:
@@ -236,7 +219,6 @@ if submitted:
                         status.write(f"   ↳ Requesting threshold quote ({threshold_gal} gal) for **{tail}**...")
                         thresh_res = fetch_quote(
                             tail_num=tail,
-                            customer_name=customer_name,
                             aircraft_model=aircraft_make_model,
                             fbo_id=fbo_base_id,
                             arrival_str=arrival_str,
@@ -248,7 +230,6 @@ if submitted:
                             thresh_total = thresh_data.get("estimatedTotal", 0.0)
                             est_total_at_threshold_str = f"${thresh_total:,.2f}"
                             
-                            # Update discount info from threshold quote if initial had missing sub-items
                             thresh_disc_info = extract_all_discounts(thresh_data)
                             for k in disc_info:
                                 if disc_info[k] == 0.0 and thresh_disc_info[k] > 0.0:
@@ -261,11 +242,11 @@ if submitted:
                     "Tail Number": tail,
                     "Min Fuel for Discount": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Current Estimated Total": f"${est_total:,.2f}",
                     "Total Discount": f"-${disc_info['total_discount']:,.2f}" if disc_info['total_discount'] > 0 else "$0.00",
                     "Fuel Uplift Discount": f"-${disc_info['fuel_uplift_discount']:,.2f}" if disc_info['fuel_uplift_discount'] > 0 else "$0.00",
                     "Length of Stay Discount": f"-${disc_info['length_of_stay_discount']:,.2f}" if disc_info['length_of_stay_discount'] > 0 else "$0.00",
                     "Est. Total if min fuel purchased": est_total_at_threshold_str,
+                    "Estimated Total Charge": f"${est_total:,.2f}",
                     "raw": data,
                     "is_error": False
                 })
@@ -276,11 +257,11 @@ if submitted:
                     "Tail Number": tail,
                     "Min Fuel for Discount": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Current Estimated Total": "N/A",
                     "Total Discount": "N/A",
                     "Fuel Uplift Discount": "N/A",
                     "Length of Stay Discount": "N/A",
                     "Est. Total if min fuel purchased": "N/A",
+                    "Estimated Total Charge": "N/A",
                     "raw": res.get("raw") or res.get("error"),
                     "is_error": True,
                     "error_msg": res.get("error")
@@ -297,11 +278,11 @@ if submitted:
                 "Tail Number",
                 "Min Fuel for Discount",
                 "Fuel Purchased (gal)",
-                "Current Estimated Total",
                 "Total Discount",
                 "Fuel Uplift Discount",
                 "Length of Stay Discount",
-                "Est. Total if min fuel purchased"
+                "Est. Total if min fuel purchased",
+                "Estimated Total Charge"
             ]
         ]
         st.table(df)
@@ -318,11 +299,11 @@ if submitted:
                     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
                     c1.metric("Min Fuel for Discount", item["Min Fuel for Discount"])
                     c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
-                    c3.metric("Current Total", item["Current Estimated Total"])
-                    c4.metric("Total Discount", item["Total Discount"])
-                    c5.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
-                    c6.metric("Length of Stay Discount", item["Length of Stay Discount"])
-                    c7.metric("Est. Total if min fuel", item["Est. Total if min fuel purchased"])
+                    c3.metric("Total Discount", item["Total Discount"])
+                    c4.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
+                    c5.metric("Length of Stay Discount", item["Length of Stay Discount"])
+                    c6.metric("Est. Total if min fuel", item["Est. Total if min fuel purchased"])
+                    c7.metric("Estimated Total Charge", item["Estimated Total Charge"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
