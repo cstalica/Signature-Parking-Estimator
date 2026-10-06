@@ -41,11 +41,11 @@ with st.form("parking_estimator_form"):
     fbo_base_id = st.selectbox(
         "FBO Base Code / Airport",
         options=FBO_CODES,
-        index=FBO_CODES.index("ICT")  # Default to ICT
+        index=FBO_CODES.index("CHO")  # KCHO
     )
     
     duration_days = st.number_input(
-        "Duration of Stay (Days)", min_value=1, max_value=30, value=1, step=1
+        "Duration of Stay (Days)", min_value=1, max_value=30, value=2, step=1
     )
     
     # Fuel Purchased Input
@@ -79,7 +79,7 @@ def fetch_quote(tail_num, customer_name, aircraft_model, fbo_id, arrival_str, de
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Origin": "https://www.signatureaviation.com",
-        "Referer": "url?id=4",
+        "Referer": "https://www.signatureaviation.com/simplified-parking",
     }
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
@@ -113,7 +113,7 @@ def parse_threshold_gallons(data):
         if match:
             return int(match.group(1))
 
-    waived_gal = data.get("waivedFuelGallons")
+    waived_gal = data.get("waivedFuelGallons") or data.get("fuelMinimum")
     if waived_gal is not None:
         return int(waived_gal)
 
@@ -121,47 +121,64 @@ def parse_threshold_gallons(data):
 
 
 def extract_length_of_stay_discount(data):
-    """Extracts length of stay discount amount specifically from payload."""
+    """Recursively checks for length of stay discount across various response fields."""
     if not data:
         return 0.0
 
-    # 1. Check inside discounts or lineItems array for length of stay label
-    discounts = data.get("discounts", []) or data.get("lineItems", [])
-    for item in discounts:
-        if isinstance(item, dict):
-            label = str(item.get("label", "") or item.get("description", "")).lower()
-            if "length" in label or "stay" in label:
-                return abs(item.get("amount", 0.0))
+    # 1. Direct fields
+    if "lengthOfStayDiscount" in data and data["lengthOfStayDiscount"]:
+        return abs(float(data["lengthOfStayDiscount"]))
 
-    # 2. Check direct key if available
-    if "lengthOfStayDiscount" in data:
-        return abs(float(data.get("lengthOfStayDiscount", 0.0)))
+    # 2. Inspect all array keys (discounts, lineItems, charges, items, breakdown)
+    array_keys = ["discounts", "lineItems", "charges", "items", "breakdown", "priceSummary"]
+    for key in array_keys:
+        items = data.get(key, [])
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    label = str(
+                        item.get("label") or item.get("description") or item.get("name") or item.get("type") or ""
+                    ).lower()
+                    if "length" in label or "stay" in label:
+                        amt = item.get("amount") or item.get("value") or item.get("discount") or 0.0
+                        if amt:
+                            return abs(float(amt))
+
+    # 3. Fallback: check initialRate vs rate sum if explicit discount exists
+    if "initialRate" in data and "estimatedTotal" in data:
+        initial = float(data.get("initialRate", 0.0))
+        total = float(data.get("estimatedTotal", 0.0))
+        tax = float(data.get("tax", 0.0))
+        
+        # If there's a price delta present without fuel uplift
+        if initial > 0 and (initial + tax) > total and data.get("fuelGallons", 0) == 0:
+            return (initial + tax) - total
 
     return 0.0
 
 
 def extract_discount_amount(data):
-    """Extracts fuel uplift discount amount from discounts list or by comparing initial rate and total."""
+    """Extracts fuel uplift discount amount from discounts list or residual price difference."""
     if not data:
         return 0.0
 
-    # 1. Check discounts / lineItems array in payload for fuel uplift
+    # 1. Check discounts / lineItems array in payload for fuel uplift specifically
     discounts = data.get("discounts", []) or data.get("lineItems", [])
     total_disc = 0.0
     for item in discounts:
         if isinstance(item, dict):
             label = str(item.get("label", "") or item.get("description", "")).lower()
             amt = item.get("amount", 0)
-            if amt < 0 and "length" not in label:
+            if amt < 0 and "length" not in label and "stay" not in label:
                 total_disc += abs(amt)
 
     if total_disc > 0:
         return total_disc
 
     # 2. Fallback: Difference between initial rate and estimated total (minus length of stay)
-    initial = data.get("initialRate", 0)
-    total = data.get("estimatedTotal", 0)
-    tax = data.get("tax", 0)
+    initial = float(data.get("initialRate", 0.0))
+    total = float(data.get("estimatedTotal", 0.0))
+    tax = float(data.get("tax", 0.0))
     los_disc = extract_length_of_stay_discount(data)
     
     if initial > 0 and (initial + tax - los_disc) > total:
@@ -200,7 +217,7 @@ if submitted:
                 data = res["data"]
                 threshold_gal = parse_threshold_gallons(data)
                 threshold_display = f"{threshold_gal:,} gal" if threshold_gal is not None else "N/A"
-                est_total = data.get("estimatedTotal", 0)
+                est_total = data.get("estimatedTotal", 0.0)
                 
                 # Extract Length of Stay Discount from initial response
                 los_discount_val = extract_length_of_stay_discount(data)
@@ -226,7 +243,7 @@ if submitted:
                         )
                         if thresh_res["success"]:
                             thresh_data = thresh_res["data"]
-                            thresh_total = thresh_data.get("estimatedTotal", 0)
+                            thresh_total = thresh_data.get("estimatedTotal", 0.0)
                             est_total_at_threshold_str = f"${thresh_total:,.2f}"
                             
                             # Extract length of stay discount if present in threshold response
