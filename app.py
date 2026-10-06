@@ -28,6 +28,8 @@ FBO_CODES = [
 
 # Form Inputs
 with st.form("parking_estimator_form"):
+    customer_name = st.text_input("Customer Name", value="John Doe")
+
     # Dropdown with "All Tail Numbers" option
     tail_options = ["All Tail Numbers"] + TAIL_NUMBERS
     selected_tail = st.selectbox("Tail Number", options=tail_options, index=0)
@@ -54,11 +56,12 @@ with st.form("parking_estimator_form"):
     submitted = st.form_submit_button("Calculate Estimate")
 
 
-def fetch_quote(tail_num, aircraft_model, fbo_id, arrival_str, departure_str, fuel):
+def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, departure_str, fuel):
     """Helper function to execute the tRPC API request for a single tail number."""
     payload = {
         "0": {
             "json": {
+                "customerName": customer_name,
                 "tailNumber": tail_num,
                 "aircraftMakeModel": aircraft_model,
                 "fboBaseId": fbo_id,
@@ -194,6 +197,7 @@ if submitted:
             status.write(f"⏳ **[{idx}/{len(target_tails)}]** Requesting initial quote for **{tail}**...")
             
             res = fetch_quote(
+                customer_name=customer_name,
                 tail_num=tail,
                 aircraft_model=aircraft_make_model,
                 fbo_id=fbo_base_id,
@@ -218,6 +222,7 @@ if submitted:
                     else:
                         status.write(f"   ↳ Requesting threshold quote ({threshold_gal} gal) for **{tail}**...")
                         thresh_res = fetch_quote(
+                            customer_name=customer_name,
                             tail_num=tail,
                             aircraft_model=aircraft_make_model,
                             fbo_id=fbo_base_id,
@@ -239,6 +244,7 @@ if submitted:
                 
                 results_summary.append({
                     "Status": "🟢 Success",
+                    "Customer Name": customer_name,
                     "Tail Number": tail,
                     "Min Fuel for Discount": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
@@ -254,6 +260,7 @@ if submitted:
                 status.write(f"❌ **{tail}** — Request failed: {res.get('error')}")
                 results_summary.append({
                     "Status": "🔴 Failed",
+                    "Customer Name": customer_name,
                     "Tail Number": tail,
                     "Min Fuel for Discount": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
@@ -275,6 +282,7 @@ if submitted:
         df = pd.DataFrame(results_summary)[
             [
                 "Status",
+                "Customer Name",
                 "Tail Number",
                 "Min Fuel for Discount",
                 "Fuel Purchased (gal)",
@@ -290,7 +298,7 @@ if submitted:
         st.subheader("Detailed Breakdown")
         for item in results_summary:
             status_text = "ERROR" if item["is_error"] else "SUCCESS"
-            expander_title = f"{item['Tail Number']} — [{status_text}]"
+            expander_title = f"{item['Tail Number']} ({item['Customer Name']}) — [{status_text}]"
             
             with st.expander(expander_title, expanded=(len(results_summary) == 1)):
                 if item["is_error"]:
