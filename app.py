@@ -5,7 +5,7 @@ import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="Aircraft Parking Fee Estimator", page_icon="✈️️", layout="wide"
+    page_title="Aircraft Parking Fee Estimator", page_icon="✈️", layout="wide"
 )
 
 st.title("✈️ Aircraft Parking Fee Estimator")
@@ -236,6 +236,11 @@ if submitted:
                 est_total = data.get("estimatedTotal", 0.0)
                 disc_info = extract_all_discounts(data)
                 
+                # If no fuel is purchased, enforce fuel_uplift_discount = 0.0
+                if fuel_gal == 0:
+                    disc_info["fuel_uplift_discount"] = 0.0
+                    disc_info["total_discount"] = disc_info["length_of_stay_discount"]
+                
                 # Extract initial rate (rate before discounts)
                 initial_rate = data.get("subtotal") or data.get("initialRate") or (est_total + disc_info["total_discount"])
                 
@@ -264,7 +269,7 @@ if submitted:
                             
                             thresh_disc_info = extract_all_discounts(thresh_data)
                             for k in disc_info:
-                                if disc_info[k] == 0.0 and thresh_disc_info[k] > 0.0:
+                                if k != "fuel_uplift_discount" and disc_info[k] == 0.0 and thresh_disc_info[k] > 0.0:
                                     disc_info[k] = thresh_disc_info[k]
 
                 status.write(f"✅ **{tail}** — Quote retrieved successfully!")
