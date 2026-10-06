@@ -120,59 +120,33 @@ def parse_threshold_gallons(data):
     return None
 
 
-def extract_length_of_stay_discount(data):
-    """Parses length of stay discount from response checking all possible value keys."""
-    if not isinstance(data, dict):
-        return 0.0
+def extract_length_of_stay_discount(obj):
+    """Recursively searches the response payload for any item with a label containing 
+    'length' and 'stay' and extracts its numerical amount."""
+    if isinstance(obj, dict):
+        # Check if current dictionary matches the discount structure
+        label = str(obj.get("label") or obj.get("description") or obj.get("title") or "").lower()
+        if "length" in label and "stay" in label:
+            for val_key in ["amount", "value", "discount", "rate"]:
+                val = obj.get(val_key)
+                if val is not None and val != 0:
+                    try:
+                        return abs(float(val))
+                    except (ValueError, TypeError):
+                        pass
 
-    def find_discount_in_list(items):
-        if not isinstance(items, list):
-            return 0.0
-        for item in items:
-            if isinstance(item, dict):
-                label = str(
-                    item.get("label") or item.get("description") or item.get("name") or item.get("title") or ""
-                ).lower()
-                clean_label = re.sub(r"[^\w\s]", "", label)
-                if "length" in clean_label or "stay" in clean_label:
-                    # Check value, amount, rate, and discount fields
-                    for val_key in ["value", "amount", "rate", "discount", "total"]:
-                        val = item.get(val_key)
-                        if val is not None and val != 0:
-                            try:
-                                return abs(float(val))
-                            except (ValueError, TypeError):
-                                pass
-        return 0.0
+        # Recursively inspect all dict values
+        for k, v in obj.items():
+            result = extract_length_of_stay_discount(v)
+            if result > 0:
+                return result
 
-    # 1. Search in array fields
-    for key in ["discounts", "lineItems", "charges", "items", "breakdown"]:
-        if key in data:
-            found = find_discount_in_list(data[key])
-            if found > 0:
-                return found
-
-    # 2. Search in nested pricing objects
-    for nested_key in ["priceSummary", "pricingSummary", "summary"]:
-        if nested_key in data and isinstance(data[nested_key], dict):
-            nested_obj = data[nested_key]
-            for key in ["discounts", "lineItems", "charges"]:
-                found = find_discount_in_list(nested_obj.get(key, []))
-                if found > 0:
-                    return found
-
-    # 3. Direct top-level fields
-    if "lengthOfStayDiscount" in data and data["lengthOfStayDiscount"]:
-        try:
-            return abs(float(data["lengthOfStayDiscount"]))
-        except (ValueError, TypeError):
-            pass
-
-    # 4. Standalone discount field when fuel is 0
-    if "discount" in data and data.get("fuelGallons", 0) == 0:
-        disc_val = data["discount"]
-        if isinstance(disc_val, (int, float)) and disc_val != 0:
-            return abs(float(disc_val))
+    elif isinstance(obj, list):
+        # Recursively inspect list items
+        for item in obj:
+            result = extract_length_of_stay_discount(item)
+            if result > 0:
+                return result
 
     return 0.0
 
@@ -188,19 +162,13 @@ def extract_discount_amount(data):
     for item in discounts:
         if isinstance(item, dict):
             label = str(item.get("label", "") or item.get("description", "")).lower()
-            clean_label = re.sub(r"[^\w\s]", "", label)
             
-            # Extract numerical value across potential field names
-            val = None
-            for val_key in ["value", "amount", "rate", "discount"]:
-                if item.get(val_key) is not None:
-                    val = item.get(val_key)
-                    break
-                    
+            # Look for negative amount that is not length of stay
+            val = item.get("amount") or item.get("value")
             if val is not None:
                 try:
                     num_val = float(val)
-                    if num_val < 0 and "length" not in clean_label and "stay" not in clean_label:
+                    if num_val < 0 and not ("length" in label and "stay" in label):
                         total_disc += abs(num_val)
                 except (ValueError, TypeError):
                     pass
