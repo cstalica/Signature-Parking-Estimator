@@ -77,7 +77,7 @@ def fetch_quote(customer_name, tail_num, aircraft_model, fbo_id, arrival_str, de
             " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
         "Origin": "https://www.signatureaviation.com",
-        "Referer": "url?id=4",
+        "Referer": "https://www.signatureaviation.com/simplified-parking",
     }
 
     api_url = "https://new-prod-api.signatureaviation.com/api/trpc/parkingQuote.create?batch=1"
@@ -248,11 +248,11 @@ if submitted:
                     "Tail Number": tail,
                     "Min Fuel for Discount": threshold_display,
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Total Discount": f"-${disc_info['total_discount']:,.2f}" if disc_info['total_discount'] > 0 else "$0.00",
                     "Fuel Uplift Discount": f"-${disc_info['fuel_uplift_discount']:,.2f}" if disc_info['fuel_uplift_discount'] > 0 else "$0.00",
                     "Length of Stay Discount": f"-${disc_info['length_of_stay_discount']:,.2f}" if disc_info['length_of_stay_discount'] > 0 else "$0.00",
+                    "Total Discount": f"-${disc_info['total_discount']:,.2f}" if disc_info['total_discount'] > 0 else "$0.00",
                     "Est. Total if min fuel purchased": est_total_at_threshold_str,
-                    "Current Estimated Total": f"${est_total:,.2f}",
+                    "Estimated Total Charge": f"${est_total:,.2f}",
                     "raw": data,
                     "is_error": False
                 })
@@ -263,11 +263,11 @@ if submitted:
                     "Tail Number": tail,
                     "Min Fuel for Discount": "N/A",
                     "Fuel Purchased (gal)": f"{fuel_gal:,} gal",
-                    "Total Discount": "N/A",
                     "Fuel Uplift Discount": "N/A",
                     "Length of Stay Discount": "N/A",
+                    "Total Discount": "N/A",
                     "Est. Total if min fuel purchased": "N/A",
-                    "Current Estimated Total": "N/A",
+                    "Estimated Total Charge": "N/A",
                     "raw": res.get("raw") or res.get("error"),
                     "is_error": True,
                     "error_msg": res.get("error")
@@ -284,11 +284,11 @@ if submitted:
                 "Tail Number",
                 "Min Fuel for Discount",
                 "Fuel Purchased (gal)",
-                "Total Discount",
                 "Fuel Uplift Discount",
                 "Length of Stay Discount",
+                "Total Discount",
                 "Est. Total if min fuel purchased",
-                "Current Estimated Total"
+                "Estimated Total Charge"
             ]
         ]
         st.table(df)
@@ -305,11 +305,11 @@ if submitted:
                     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
                     c1.metric("Min Fuel for Discount", item["Min Fuel for Discount"])
                     c2.metric("Fuel Purchased", item["Fuel Purchased (gal)"])
-                    c3.metric("Total Discount", item["Total Discount"])
-                    c4.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
-                    c5.metric("Length of Stay Discount", item["Length of Stay Discount"])
+                    c3.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
+                    c4.metric("Length of Stay Discount", item["Length of Stay Discount"])
+                    c5.metric("Total Discount", item["Total Discount"])
                     c6.metric("Est. Total if min fuel", item["Est. Total if min fuel purchased"])
-                    c7.metric("Current Total", item["Current Estimated Total"])
+                    c7.metric("Estimated Total Charge", item["Estimated Total Charge"])
                 
                 st.write("**Raw Payload/Response:**")
                 st.json(item["raw"])
