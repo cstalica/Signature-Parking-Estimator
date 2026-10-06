@@ -132,8 +132,8 @@ def parse_threshold_gallons(data):
 
 def extract_all_discounts(data):
     """
-    Parses the response object to find Total Discount, Fuel Uplift Discount, 
-    and Length of Stay Discount.
+    Parses the response object to find Fuel Uplift Discount and Length of Stay Discount,
+    and sets Total Discount as their explicit sum.
     """
     discounts_breakdown = {
         "total_discount": 0.0,
@@ -170,25 +170,14 @@ def extract_all_discounts(data):
                         discounts_breakdown["length_of_stay_discount"] = numeric_val
                     elif "fuel" in label and "uplift" in label:
                         discounts_breakdown["fuel_uplift_discount"] = numeric_val
-                    elif label in ["discount", "discount applied", "total discount"]:
-                        discounts_breakdown["total_discount"] = numeric_val
             except (ValueError, TypeError):
                 pass
 
-    if discounts_breakdown["total_discount"] == 0.0:
-        sub_sum = (
-            discounts_breakdown["fuel_uplift_discount"] 
-            + discounts_breakdown["length_of_stay_discount"]
-        )
-        if sub_sum > 0:
-            discounts_breakdown["total_discount"] = sub_sum
-        else:
-            direct_disc = data.get("discount") or data.get("totalDiscount")
-            if direct_disc:
-                try:
-                    discounts_breakdown["total_discount"] = abs(float(direct_disc))
-                except (ValueError, TypeError):
-                    pass
+    # Explicitly calculate total discount as the sum of fuel uplift and length of stay discounts
+    discounts_breakdown["total_discount"] = (
+        discounts_breakdown["fuel_uplift_discount"] 
+        + discounts_breakdown["length_of_stay_discount"]
+    )
 
     return discounts_breakdown
 
@@ -236,7 +225,7 @@ if submitted:
                 est_total = data.get("estimatedTotal", 0.0)
                 disc_info = extract_all_discounts(data)
                 
-                # If no fuel is purchased, enforce fuel_uplift_discount = 0.0
+                # If no fuel is purchased, enforce fuel_uplift_discount = 0.0 and recompute total_discount
                 if fuel_gal == 0:
                     disc_info["fuel_uplift_discount"] = 0.0
                     disc_info["total_discount"] = disc_info["length_of_stay_discount"]
@@ -266,11 +255,6 @@ if submitted:
                             thresh_data = thresh_res["data"]
                             thresh_total = thresh_data.get("estimatedTotal", 0.0)
                             est_total_at_threshold_str = f"${thresh_total:,.2f}"
-                            
-                            thresh_disc_info = extract_all_discounts(thresh_data)
-                            for k in disc_info:
-                                if k != "fuel_uplift_discount" and disc_info[k] == 0.0 and thresh_disc_info[k] > 0.0:
-                                    disc_info[k] = thresh_disc_info[k]
 
                 status.write(f"✅ **{tail}** — Quote retrieved successfully!")
                 
