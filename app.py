@@ -42,8 +42,9 @@ with st.form("parking_estimator_form"):
         index=FBO_CODES.index("CHO")  # KCHO
     )
     
+    # Updated to float to support fractional days like 0.5
     duration_days = st.number_input(
-        "Duration of Stay (Days)", min_value=1, max_value=30, value=2, step=1
+        "Duration of Stay (Days)", min_value=0.1, max_value=30.0, value=2.0, step=0.5
     )
     
     # Fuel Purchased Input
@@ -183,7 +184,8 @@ def extract_all_discounts(data):
 
 if submitted:
     now = datetime.utcnow()
-    dept = now + timedelta(days=duration_days)
+    # Supports fractional days via timedelta hours
+    dept = now + timedelta(hours=float(duration_days * 24))
     arrival_str = now.strftime("%Y-%m-%d")
     departure_str = dept.strftime("%Y-%m-%d")
 
@@ -251,7 +253,7 @@ if submitted:
                     "Fuel Uplift Discount": f"-${disc_info['fuel_uplift_discount']:,.2f}" if disc_info['fuel_uplift_discount'] > 0 else "$0.00",
                     "Length of Stay Discount": f"-${disc_info['length_of_stay_discount']:,.2f}" if disc_info['length_of_stay_discount'] > 0 else "$0.00",
                     "Total Discount": f"-${disc_info['total_discount']:,.2f}" if disc_info['total_discount'] > 0 else "$0.00",
-                    "Est. Total if min fuel purchased": est_total_at_threshold_str,
+                    "Estimated Total With Min Fuel Purchase": est_total_at_threshold_str,
                     "Estimated Total Charge": f"${est_total:,.2f}",
                     "raw": data,
                     "is_error": False
@@ -266,7 +268,7 @@ if submitted:
                     "Fuel Uplift Discount": "N/A",
                     "Length of Stay Discount": "N/A",
                     "Total Discount": "N/A",
-                    "Est. Total if min fuel purchased": "N/A",
+                    "Estimated Total With Min Fuel Purchase": "N/A",
                     "Estimated Total Charge": "N/A",
                     "raw": res.get("raw") or res.get("error"),
                     "is_error": True,
@@ -287,7 +289,7 @@ if submitted:
                 "Fuel Uplift Discount",
                 "Length of Stay Discount",
                 "Total Discount",
-                "Est. Total if min fuel purchased",
+                "Estimated Total With Min Fuel Purchase",
                 "Estimated Total Charge"
             ]
         ]
@@ -308,7 +310,7 @@ if submitted:
                     c3.metric("Fuel Uplift Discount", item["Fuel Uplift Discount"])
                     c4.metric("Length of Stay Discount", item["Length of Stay Discount"])
                     c5.metric("Total Discount", item["Total Discount"])
-                    c6.metric("Est. Total if min fuel", item["Est. Total if min fuel purchased"])
+                    c6.metric("Estimated Total With Min Fuel Purchase", item["Estimated Total With Min Fuel Purchase"])
                     c7.metric("Estimated Total Charge", item["Estimated Total Charge"])
                 
                 st.write("**Raw Payload/Response:**")
