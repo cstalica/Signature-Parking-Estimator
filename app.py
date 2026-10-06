@@ -121,38 +121,53 @@ def parse_threshold_gallons(data):
 
 
 def extract_length_of_stay_discount(data):
-    """Recursively checks for length of stay discount across various response fields."""
-    if not data:
+    """Parses length of stay discount from all potential locations in the JSON response."""
+    if not isinstance(data, dict):
         return 0.0
 
-    # 1. Direct fields
+    def find_discount_in_list(items):
+        if not isinstance(items, list):
+            return 0.0
+        for item in items:
+            if isinstance(item, dict):
+                label = str(
+                    item.get("label") or item.get("description") or item.get("name") or ""
+                ).lower()
+                # Clean up bullet characters or dots from label (e.g., "• length of stay discount")
+                clean_label = re.sub(r"[^\w\s]", "", label)
+                if "length" in clean_label or "stay" in clean_label:
+                    amt = item.get("amount") or item.get("value") or item.get("discount") or 0.0
+                    if amt:
+                        return abs(float(amt))
+        return 0.0
+
+    # 1. Search in primary top-level arrays
+    for key in ["discounts", "lineItems", "charges", "items", "breakdown"]:
+        if key in data:
+            found = find_discount_in_list(data[key])
+            if found > 0:
+                return found
+
+    # 2. Search inside nested pricing objects (e.g. priceSummary)
+    for nested_key in ["priceSummary", "pricingSummary", "summary"]:
+        if nested_key in data and isinstance(data[nested_key], dict):
+            nested_obj = data[nested_key]
+            for key in ["discounts", "lineItems", "charges"]:
+                found = find_discount_in_list(nested_obj.get(key, []))
+                if found > 0:
+                    return found
+            # Check direct key inside nested summary
+            if "lengthOfStayDiscount" in nested_obj:
+                return abs(float(nested_obj["lengthOfStayDiscount"]))
+
+    # 3. Direct top-level fields
     if "lengthOfStayDiscount" in data and data["lengthOfStayDiscount"]:
         return abs(float(data["lengthOfStayDiscount"]))
 
-    # 2. Inspect all array keys (discounts, lineItems, charges, items, breakdown)
-    array_keys = ["discounts", "lineItems", "charges", "items", "breakdown", "priceSummary"]
-    for key in array_keys:
-        items = data.get(key, [])
-        if isinstance(items, list):
-            for item in items:
-                if isinstance(item, dict):
-                    label = str(
-                        item.get("label") or item.get("description") or item.get("name") or item.get("type") or ""
-                    ).lower()
-                    if "length" in label or "stay" in label:
-                        amt = item.get("amount") or item.get("value") or item.get("discount") or 0.0
-                        if amt:
-                            return abs(float(amt))
-
-    # 3. Fallback: check initialRate vs rate sum if explicit discount exists
-    if "initialRate" in data and "estimatedTotal" in data:
-        initial = float(data.get("initialRate", 0.0))
-        total = float(data.get("estimatedTotal", 0.0))
-        tax = float(data.get("tax", 0.0))
-        
-        # If there's a price delta present without fuel uplift
-        if initial > 0 and (initial + tax) > total and data.get("fuelGallons", 0) == 0:
-            return (initial + tax) - total
+    # 4. Direct 'discount' field if it is explicitly labeled or standalone
+    if "discount" in data and isinstance(data["discount"], (int, float)) and data["discount"] < 0:
+        if data.get("fuelGallons", 0) == 0:
+            return abs(float(data["discount"]))
 
     return 0.0
 
@@ -168,14 +183,15 @@ def extract_discount_amount(data):
     for item in discounts:
         if isinstance(item, dict):
             label = str(item.get("label", "") or item.get("description", "")).lower()
+            clean_label = re.sub(r"[^\w\s]", "", label)
             amt = item.get("amount", 0)
-            if amt < 0 and "length" not in label and "stay" not in label:
+            if amt < 0 and "length" not in clean_label and "stay" not in clean_label:
                 total_disc += abs(amt)
 
     if total_disc > 0:
         return total_disc
 
-    # 2. Fallback: Difference between initial rate and estimated total (minus length of stay)
+    # 2. Fallback: Difference between initial rate and estimated total (minus length of stay discount)
     initial = float(data.get("initialRate", 0.0))
     total = float(data.get("estimatedTotal", 0.0))
     tax = float(data.get("tax", 0.0))
